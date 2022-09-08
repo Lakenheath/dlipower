@@ -547,7 +547,7 @@ class PowerSwitch(object):
         if outlets and outlet:
             for plug in outlets:
                 if plug[0] == outlet:
-                    return plug[2]=='ON'
+                    return plug[2] == 'ON'
         return 'Unknown'
 
     def command_on_outlets(self, command, outlets):
