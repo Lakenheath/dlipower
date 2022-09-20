@@ -412,7 +412,7 @@ class PowerSwitch(object):
         full_url = "%s/%s" % (self.base_url, url)
         result = None
         request = None
-        logger.debug(f'Requesting url: {full_url}')
+        # logger.debug(f'Requesting url: {full_url}')
         for i in range(0, self.retries):
             try:
                 if self.secure_login and self.session:
@@ -426,8 +426,8 @@ class PowerSwitch(object):
             if request.status_code == 200:
                 result = request.content
                 break
-        logger.debug('Response code: %s', request.status_code)
-        logger.debug(f'Response content: {result}')
+        # logger.debug('Response code: %s', request.status_code)
+        # logger.debug(f'Response content: {result}')
         return result
 
     def determine_outlet(self, outlet=None):
