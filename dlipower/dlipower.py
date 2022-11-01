@@ -490,8 +490,7 @@ class PowerSwitch(object):
             Note, does not return any status info about the power on part of
             the operation by design
         """
-        if self.off(outlet):
-            return True
+        self.off(outlet)
         time.sleep(self.cycletime)
         self.on(outlet)
         return False
