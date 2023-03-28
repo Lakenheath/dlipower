@@ -341,7 +341,7 @@ class PowerSwitch(object):
             value = field.get('value', '')
             if name:
                 fields[name] = value
-
+        print(fields)
         fields['Username'] = self.userid
         fields['Password'] = self.password
 
@@ -581,4 +581,5 @@ class PowerSwitch(object):
 
 
 if __name__ == "__main__":  # pragma: no cover
-    PowerSwitch().printstatus()
+    epcr = PowerSwitch(userid='admin', password='4321', hostname='192.168.10.12')
+    epcr.printstatus()
