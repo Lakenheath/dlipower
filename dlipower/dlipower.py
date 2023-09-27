@@ -375,7 +375,7 @@ class PowerSwitch(object):
         outlets = []
         temp = json.loads(self.outlets.GET().text)
         for i, o in enumerate(temp):
-            outlets.append([i, o['name'], o['physical_state']])
+            outlets.append([i + 1, o['name'], o['physical_state']])
         if self.__len == 0:
             self.__len = len(outlets)
         return outlets
