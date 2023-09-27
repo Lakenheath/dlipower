@@ -98,22 +98,12 @@ Outlet	Name           	State
 8	Cable Modem1   	OFF
 """
 
-import hashlib
 import logging
 import multiprocessing
-import os
 import json
-import requests
-import requests.exceptions
 import time
-import urllib3
-from urllib.parse import quote
-
-from bs4 import BeautifulSoup
-
-
-logger = logging.getLogger(__name__)
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from hammock import Hammock
+from requests.auth import HTTPDigestAuth
 
 
 # Global settings
@@ -125,9 +115,8 @@ CONFIG_DEFAULTS = {
     'cycletime': CYCLETIME,
     'userid': 'admin',
     'password': '4321',
-    'hostname': '192.168.0.100'
+    'hostname': '192.168.10.12'
 }
-CONFIG_FILE = os.path.expanduser('~/.dlipower.conf')
 
 
 def _call_it(params):   # pragma: no cover
@@ -224,45 +213,39 @@ class PowerSwitch(object):
     """ Powerswitch class to manage the Digital Loggers Web power switch """
     __len = 0
     login_timeout = 2.0
-    secure_login = False
 
     def __init__(self, userid=None, password=None, hostname=None, timeout=None,
-                 cycletime=None, retries=None, use_https=False):
+                 cycletime=None, retries=None):
         """
         Class initializaton
         """
         if not retries:
             retries = RETRIES
-        config = self.load_configuration()
         if retries:
             self.retries = retries
         if userid:
             self.userid = userid
         else:
-            self.userid = config['userid']
+            self.userid = CONFIG_DEFAULTS['userid']
         if password:
             self.password = password
         else:
-            self.password = config['password']
+            self.password = CONFIG_DEFAULTS['password']
         if hostname:
             self.hostname = hostname
         else:
-            self.hostname = config['hostname']
+            self.hostname = CONFIG_DEFAULTS['hostname']
         if timeout:
             self.timeout = float(timeout)
         else:
-            self.timeout = config['timeout']
+            self.timeout = CONFIG_DEFAULTS['timeout']
         if cycletime:
             self.cycletime = float(cycletime)
         else:
-            self.cycletime = config['cycletime']
-        self.scheme = 'http'
-        if use_https:
-            self.scheme = 'https'
-        self.base_url = '%s://%s' % (self.scheme, self.hostname)
-        self._is_admin = True
-        self.session = requests.Session()
-        self.login()
+            self.cycletime = CONFIG_DEFAULTS['cycletime']
+        auth = HTTPDigestAuth(self.userid, self.password)
+        self.session = Hammock(f"http://{self.hostname}/restapi", append_slash=True, auth=auth, headers={'X-CSRF': 'x'})
+        self.outlets = self.session.relay.outlets
 
     def __len__(self):
         """
@@ -322,113 +305,6 @@ class PowerSwitch(object):
             return outlets[0]
         return outlets
 
-    def login(self):
-        self.secure_login = False
-        self.session = requests.Session()
-        try:
-            response = self.session.get(self.base_url, verify=False, timeout=self.login_timeout, allow_redirects=False)
-            if response.is_redirect:
-                self.base_url = response.headers['Location'].rstrip('/')
-                logger.debug(f'Redirecting to: {self.base_url}')
-                response = self.session.get(self.base_url, verify=False, timeout=self.login_timeout)
-        except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
-            self.session = None
-            return
-        soup = BeautifulSoup(response.text, 'html.parser')
-        fields = {}
-        for field in soup.find_all('input'):
-            name = field.get('name', None)
-            value = field.get('value', '')
-            if name:
-                fields[name] = value
-        print(fields)
-        fields['Username'] = self.userid
-        fields['Password'] = self.password
-
-        form_response = fields['Challenge'] + fields['Username'] + fields['Password'] + fields['Challenge']
-
-        m = hashlib.md5()  # nosec - The switch we are talking to uses md5 hashes
-        m.update(form_response.encode())
-        data = {'Username': 'admin', 'Password': m.hexdigest()}
-        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-
-        try:
-            response = self.session.post('%s/login.tgi' % self.base_url, headers=headers, data=data, timeout=self.timeout, verify=False)
-        except requests.exceptions.ConnectTimeout:
-            self.secure_login = False
-            self.session = None
-            return
-
-        if response.status_code == 200:
-            if 'Set-Cookie' in response.headers:
-                self.secure_login = True
-
-    def load_configuration(self):
-        """ Return a configuration dictionary """
-        if os.path.isfile(CONFIG_FILE):
-            file_h = open(CONFIG_FILE, 'r')
-            try:
-                config = json.load(file_h)
-            except ValueError:
-                # Failed
-                return CONFIG_DEFAULTS
-            file_h.close()
-            return config
-        return CONFIG_DEFAULTS
-
-    def save_configuration(self):
-        """ Update the configuration file with the object's settings """
-        # Get the configuration from the config file or set to the defaults
-        config = self.load_configuration()
-
-        # Overwrite the objects configuration over the existing config values
-        config['userid'] = self.userid
-        config['password'] = self.password
-        config['hostname'] = self.hostname
-        config['timeout'] = self.timeout
-
-        # Write it to disk
-        file_h = open(CONFIG_FILE, 'w')
-        # Make sure the file perms are correct before we write data
-        # that can include the password into it.
-        if hasattr(os, 'fchmod'):
-            os.fchmod(file_h.fileno(), 0o0600)
-        if file_h:
-            json.dump(config, file_h, sort_keys=True, indent=4)
-            file_h.close()
-        else:
-            raise DLIPowerException('Unable to open configuration file for write')
-
-    def verify(self):
-        """ Verify we can reach the switch, returns true if ok """
-        if self.geturl():
-            return True
-        return False
-
-    def geturl(self, url='index.htm'):
-        """
-        Get a URL from the userid/password protected powerswitch page Return None on failure
-        """
-        full_url = "%s/%s" % (self.base_url, url)
-        result = None
-        request = None
-        # logger.debug(f'Requesting url: {full_url}')
-        for i in range(0, self.retries):
-            try:
-                if self.secure_login and self.session:
-                    request = self.session.get(full_url, timeout=self.timeout, verify=False, allow_redirects=True)
-                else:
-                    request = requests.get(full_url, auth=(self.userid, self.password,), timeout=self.timeout, verify=False, allow_redirects=True)  # nosec
-            except requests.exceptions.RequestException as e:
-                logger.warning("Request timed out - %d retries left.", self.retries - i - 1)
-                logger.exception("Caught exception %s", str(e))
-                continue
-            if request.status_code == 200:
-                result = request.content
-                break
-        # logger.debug('Response code: %s', request.status_code)
-        # logger.debug(f'Response content: {result}')
-        return result
 
     def determine_outlet(self, outlet=None):
         """ Get the correct outlet number from the outlet passed in, this
@@ -462,9 +338,7 @@ class PowerSwitch(object):
     def set_outlet_name(self, outlet=0, name="Unknown"):
         """ Set the name of an outlet """
         self.determine_outlet(outlet)
-        self.geturl(
-            url='unitnames.cgi?outname%s=%s' % (outlet, quote(name))
-        )
+        self.outlets(outlet).name.PUT(json=name)
         return self.get_outlet_name(outlet) == name
 
     def off(self, outlet=0):
@@ -472,7 +346,7 @@ class PowerSwitch(object):
             False = Success
             True = Fail
         """
-        self.geturl(url='outlet?%d=OFF' % self.determine_outlet(outlet))
+        self.outlets(self.determine_outlet(outlet)).state.PUT(json=False)
         return self.status(outlet) != 'OFF'
 
     def on(self, outlet=0):
@@ -480,7 +354,7 @@ class PowerSwitch(object):
             False = Success
             True = Fail
         """
-        self.geturl(url='outlet?%d=ON' % self.determine_outlet(outlet))
+        self.outlets(self.determine_outlet(outlet)).state.PUT(json=True)
         return self.status(outlet) != 'ON'
 
     def cycle(self, outlet=0):
@@ -499,29 +373,9 @@ class PowerSwitch(object):
         """ Return the status of all outlets in a list,
         each item will contain 3 items plugnumber, hostname and state  """
         outlets = []
-        url = self.geturl('index.htm')
-        if not url:
-            return None
-        soup = BeautifulSoup(url, "html.parser")
-        # Get the root of the table containing the port status info
-        try:
-            root = soup.findAll('td', text='1')[0].parent.parent.parent
-        except IndexError:
-            # Finding the root of the table with the outlet info failed
-            # try again assuming we're seeing the table for a user
-            # account insteaed of the admin account (tables are different)
-            try:
-                self._is_admin = False
-                root = soup.findAll('th', text='#')[0].parent.parent.parent
-            except IndexError:
-                return None
-        for temp in root.findAll('tr'):
-            columns = temp.findAll('td')
-            if len(columns) == 5:
-                plugnumber = columns[0].string
-                hostname = columns[1].string
-                state = columns[2].find('font').string.upper()
-                outlets.append([int(plugnumber), hostname, state])
+        temp = json.loads(self.outlets.GET().text)
+        for i, o in enumerate(temp):
+            outlets.append([i, o['name'], o['physical_state']])
         if self.__len == 0:
             self.__len = len(outlets)
         return outlets
@@ -583,3 +437,24 @@ class PowerSwitch(object):
 if __name__ == "__main__":  # pragma: no cover
     epcr = PowerSwitch(userid='admin', password='4321', hostname='192.168.10.12')
     epcr.printstatus()
+    print(epcr.statuslist())
+
+    # auth = HTTPDigestAuth('admin', '4321')
+    # session = Hammock("http://192.168.10.12/restapi", append_slash=True, auth=auth, headers={'X-CSRF': 'x'})
+    # outlets = session.relay.outlets
+    # listOutlets = json.loads(outlets.GET().text)
+    # print(listOutlets)
+    # for o in listOutlets:
+    #     print(o['name'])
+
+    # Relay 1 starts switching on
+    # for i in range(1, 8):
+    #     outlets(i).state.PUT(json=True)  # outlets 1-7 switch on
+
+    # time.sleep(7)
+    #
+    # for i in range(8):
+    #     outlets(i).state.PUT(json=False)  # all outlets switch off
+
+    # admin
+
