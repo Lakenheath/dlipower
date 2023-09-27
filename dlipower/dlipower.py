@@ -418,28 +418,16 @@ class PowerSwitch(object):
                 return result
             else:
                 return [result]
-        pool = multiprocessing.Pool(processes=len(outlets))
-        result = [
-            value for value in pool.imap(
-                _call_it,
-                [(self, command, (outlet, )) for outlet in outlets],
-                chunksize=1
-            )
-        ]
-        pool.close()
-        pool.join()
-        if isinstance(result[0], bool):
-            for value in result:
-                if value:
-                    return True
-            return result[0]
-        return result
+        results = []
+        for o in outlets:
+            results.append(getattr(self, command)(o))
+        return results
 
 
 if __name__ == "__main__":  # pragma: no cover
     epcr = PowerSwitch(userid='admin', password='4321', hostname='192.168.10.12')
     epcr.printstatus()
-    epcr.command_on_outlets('off', [1, 2, 3, 4, 5, 6])
+    print(epcr.command_on_outlets('on', [1, 2, 3, 4, 5, 6]))
     # auth = HTTPDigestAuth('admin', '4321')
     # session = Hammock("http://192.168.10.12/restapi", append_slash=True, auth=auth, headers={'X-CSRF': 'x'})
     # outlets = session.relay.outlets
