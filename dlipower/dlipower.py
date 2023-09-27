@@ -184,11 +184,11 @@ class Outlet(object):
 
     def off(self):
         """ Turn the outlet off """
-        return self.switch.off(self.outlet_number)
+        return self.switch.off(self.outlet_number-1)
 
     def on(self):
         """ Turn the outlet on """
-        return self.switch.on(self.outlet_number)
+        return self.switch.on(self.outlet_number-1)
 
     def rename(self, new_name):
         """
@@ -196,12 +196,12 @@ class Outlet(object):
         :param new_name: New name for the outlet
         :return:
         """
-        return self.switch.set_outlet_name(self.outlet_number, new_name)
+        return self.switch.set_outlet_name(self.outlet_number-1, new_name)
 
     @property
     def name(self):
         """ Return the name or description of the outlet """
-        return self.switch.get_outlet_name(self.outlet_number)
+        return self.switch.get_outlet_name(self.outlet_number-1)
 
     @name.setter
     def name(self, new_name):
@@ -291,8 +291,10 @@ class PowerSwitch(object):
         outlets = []
         if isinstance(index, slice):
             status = self.statuslist()[index.start:index.stop]
+        elif index <= 0:
+            raise ValueError(f"Index {index} is not valid. Try index 1-8.")
         else:
-            status = [self.statuslist()[index]]
+            status = [self.statuslist()[index-1]]
         for outlet_status in status:
             power_outlet = Outlet(
                 switch=self,
@@ -331,7 +333,7 @@ class PowerSwitch(object):
         outlets = self.statuslist()
         if outlets and outlet:
             for plug in outlets:
-                if int(plug[0]) == outlet:
+                if int(plug[0]) == outlet+1:
                     return plug[1]
         return 'Unknown'
 
@@ -346,7 +348,7 @@ class PowerSwitch(object):
             False = Success
             True = Fail
         """
-        self.outlets(self.determine_outlet(outlet)).state.PUT(json=False)
+        self.outlets(self.determine_outlet(outlet)-1).state.PUT(json=False)
         return self.status(outlet) != 'OFF'
 
     def on(self, outlet=0):
@@ -354,7 +356,7 @@ class PowerSwitch(object):
             False = Success
             True = Fail
         """
-        self.outlets(self.determine_outlet(outlet)).state.PUT(json=True)
+        self.outlets(self.determine_outlet(outlet)-1).state.PUT(json=True)
         return self.status(outlet) != 'ON'
 
     def cycle(self, outlet=0):
@@ -375,7 +377,7 @@ class PowerSwitch(object):
         outlets = []
         temp = json.loads(self.outlets.GET().text)
         for i, o in enumerate(temp):
-            outlets.append([i + 1, o['name'], o['physical_state']])
+            outlets.append([i + 1, o['name'], 'ON' if o['physical_state'] else 'OFF'])
         if self.__len == 0:
             self.__len = len(outlets)
         return outlets
@@ -437,8 +439,7 @@ class PowerSwitch(object):
 if __name__ == "__main__":  # pragma: no cover
     epcr = PowerSwitch(userid='admin', password='4321', hostname='192.168.10.12')
     epcr.printstatus()
-    print(epcr.statuslist())
-
+    epcr.command_on_outlets('off', [1, 2, 3, 4, 5, 6])
     # auth = HTTPDigestAuth('admin', '4321')
     # session = Hammock("http://192.168.10.12/restapi", append_slash=True, auth=auth, headers={'X-CSRF': 'x'})
     # outlets = session.relay.outlets
