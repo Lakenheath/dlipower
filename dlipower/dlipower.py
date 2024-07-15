@@ -329,7 +329,7 @@ class PowerSwitch(object):
             response = self.session.get(self.base_url, verify=False, timeout=self.login_timeout, allow_redirects=False)
             if response.is_redirect:
                 self.base_url = response.headers['Location'].rstrip('/')
-                logger.debug(f'Redirecting to: {self.base_url}')
+                # logger.debug(f'Redirecting to: {self.base_url}')
                 response = self.session.get(self.base_url, verify=False, timeout=self.login_timeout)
         except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
             self.session = None
@@ -581,4 +581,5 @@ class PowerSwitch(object):
 
 
 if __name__ == "__main__":  # pragma: no cover
-    PowerSwitch().printstatus()
+    epcr = PowerSwitch(userid='admin', password='4321', hostname='192.168.10.12')
+    epcr.printstatus()
