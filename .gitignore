@@ -1,5 +1,5 @@
 dlipower/package_metadata.json
-.pyc
+*.pyc
 .idea
 dist
 build
@@ -16,3 +16,4 @@ dlipower/package_metadata.json
 /Untitled.ipynb
 /coverage.xml
 /pytest_*.xml
+
